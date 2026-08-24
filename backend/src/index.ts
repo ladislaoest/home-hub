@@ -11,6 +11,7 @@ import { settingsRouter } from "./routes/settings";
 import { alexaSkillRouter } from "./routes/alexaSkill";
 import { requireAuth } from "./auth";
 import { initScheduler } from "./services/routineEngine";
+import { syncDevices } from "./services/deviceManager";
 
 const app = express();
 app.use(cors());
@@ -40,4 +41,11 @@ const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => {
   console.log(`HomeHub escuchando en el puerto ${PORT}`);
   initScheduler();
+
+  // El disco no es persistente en el plan gratuito: cada arranque parte de una base de datos
+  // vacía. Como los dispositivos viven en la nube de cada proveedor, los recuperamos solos aquí
+  // para no depender de que alguien pulse "Buscar dispositivos" a mano tras cada despliegue.
+  syncDevices()
+    .then((results) => console.log("Auto-sincronización de dispositivos al arrancar:", results))
+    .catch((err) => console.error("Fallo al auto-sincronizar dispositivos:", err.message));
 });
