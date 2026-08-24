@@ -128,8 +128,6 @@ document.getElementById("login-btn").addEventListener("click", async () => {
   }
 });
 
-if (token) showApp();
-
 // ---------- Tabs ----------
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -547,3 +545,6 @@ document.getElementById("routine-form").addEventListener("submit", async (e) => 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
+
+// Todo lo anterior ya está definido (recognizer, alwaysOn, etc.) - ahora sí es seguro auto-entrar si había sesión
+if (token) showApp();
