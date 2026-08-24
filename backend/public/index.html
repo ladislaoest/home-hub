@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>HomeHub</title>
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0f172a" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+<link rel="icon" href="/icons/icon-192.png" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div id="login-screen" class="screen">
+  <div class="login-card">
+    <h1>🏠 HomeHub</h1>
+    <p class="muted">Tu casa, personalizada.</p>
+    <input id="login-user" type="text" placeholder="Usuario" autocomplete="username" />
+    <input id="login-pass" type="password" placeholder="Contraseña" autocomplete="current-password" />
+    <button id="login-btn">Entrar</button>
+    <p id="login-error" class="error"></p>
+  </div>
+</div>
+
+<div id="app-screen" class="screen hidden">
+  <header>
+    <h1>🏠 HomeHub</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="voice">Voz</button>
+      <button class="tab-btn" data-tab="devices">Dispositivos</button>
+      <button class="tab-btn" data-tab="routines">Rutinas</button>
+    </nav>
+    <button id="logout-btn" title="Salir">⏻</button>
+  </header>
+
+  <main>
+    <section id="tab-voice" class="tab-panel">
+      <div class="mic-wrap">
+        <button id="mic-btn" aria-label="Hablar">🎤</button>
+        <p id="mic-status" class="muted">Pulsa y habla, o escribe abajo</p>
+      </div>
+      <div class="transcript" id="transcript"></div>
+      <form id="text-form">
+        <input id="text-input" type="text" placeholder="Ej: enciende la luz del salón" />
+        <button type="submit">Enviar</button>
+      </form>
+    </section>
+
+    <section id="tab-devices" class="tab-panel hidden">
+      <div class="panel-header">
+        <h2>Dispositivos</h2>
+        <button id="sync-btn">🔄 Buscar dispositivos</button>
+      </div>
+      <div id="devices-list" class="card-list"></div>
+    </section>
+
+    <section id="tab-routines" class="tab-panel hidden">
+      <div class="panel-header">
+        <h2>Rutinas</h2>
+        <button id="new-routine-btn">➕ Nueva rutina</button>
+      </div>
+      <div id="routines-list" class="card-list"></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="routine-dialog">
+  <form id="routine-form">
+    <h3>Nueva rutina</h3>
+    <label>Nombre<input id="routine-name" required placeholder="Ej: Modo cine" /></label>
+    <label>Disparador
+      <select id="routine-trigger">
+        <option value="manual">Manual (botón)</option>
+        <option value="cron">Programada (hora)</option>
+      </select>
+    </label>
+    <label id="cron-field" class="hidden">Hora (cron, ej: 0 22 * * * = cada día a las 22:00)
+      <input id="routine-cron" placeholder="0 22 * * *" />
+    </label>
+    <div id="routine-actions"></div>
+    <button type="button" id="add-action-btn">➕ Añadir acción</button>
+    <div class="dialog-buttons">
+      <button type="button" id="cancel-routine-btn">Cancelar</button>
+      <button type="submit">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

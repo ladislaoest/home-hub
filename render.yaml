@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: homehub
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    disk:
+      name: homehub-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 3000
+      - key: DB_PATH
+        value: /app/data/homehub.db
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SMARTTHINGS_TOKEN
+        sync: false
+      - key: TUYA_ACCESS_ID
+        sync: false
+      - key: TUYA_ACCESS_SECRET
+        sync: false
+      - key: TUYA_REGION
+        value: eu
+      - key: TUYA_USER_ID
+        sync: false
+      - key: HUE_BRIDGE_USERNAME
+        sync: false
+      - key: HUE_REMOTE_ACCESS_TOKEN
+        sync: false
+      - key: ALEXA_ANNOUNCE_MODE
+        value: routine
+      - key: ALEXA_COOKIE
+        sync: false
+      - key: ALEXA_ANNOUNCE_DEVICE_SERIAL
+        sync: false
