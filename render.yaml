@@ -4,11 +4,7 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
-    disk:
-      name: homehub-data
-      mountPath: /app/data
-      sizeGB: 1
+    plan: free
     envVars:
       - key: ADMIN_USER
         sync: false
