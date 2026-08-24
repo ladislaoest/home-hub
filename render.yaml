@@ -44,3 +44,7 @@ services:
         sync: false
       - key: ALEXA_SKILL_ID
         sync: false
+      - key: EMBY_SERVER_URL
+        sync: false
+      - key: EMBY_API_KEY
+        sync: false

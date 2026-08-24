@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import fetch from "node-fetch";
 import { listStoredDevices } from "./deviceManager";
 import { listRoutines, runActions, runRoutine, RoutineAction } from "./routineEngine";
+import { playOnEmby } from "./embyControl";
 
 let client: Anthropic | null = null;
 function getClient() {
@@ -71,6 +72,16 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["response"],
     },
   },
+  {
+    name: "play_content",
+    description:
+      "Reproduce contenido concreto (una película, serie o episodio, por nombre) en Emby en la tele. Úsalo cuando pidan ver/poner/reproducir algo específico por título, no para abrir la app sin más (eso es execute_actions con launch_app).",
+    input_schema: {
+      type: "object",
+      properties: { query: { type: "string", description: "título o lo que se quiere buscar en la biblioteca de Emby" } },
+      required: ["query"],
+    },
+  },
 ];
 
 const SYSTEM_PROMPT = `Eres Jarvis, el asistente de una casa domótica personalizada (HomeHub). No eres un simple
@@ -78,8 +89,10 @@ ejecutor de comandos: eres un compañero con criterio propio. Piensas antes de r
 de lo que te dicen (no solo palabras clave sueltas) y tienes un tono cercano, eficiente y con un puntito de
 ingenio — nunca seco, nunca un robot que solo dice "Hecho".
 
-El usuario te habla en español, de forma natural y coloquial. Tienes cuatro herramientas:
-- execute_actions: para controlar uno o varios dispositivos (TV, luces, etc.) directamente.
+El usuario te habla en español, de forma natural y coloquial. Tienes cinco herramientas:
+- execute_actions: para controlar uno o varios dispositivos (TV, luces, etc.) directamente, incluyendo abrir
+  una app sin más (launch_app).
+- play_content: cuando piden ver/reproducir algo CONCRETO por título en Emby (una peli, serie o episodio).
 - run_routine: cuando la petición coincide claramente con una rutina ya guardada por el usuario.
 - clarify: cuando falta información real para saber a qué dispositivo/acción se refiere (p.ej. hay varias
   "luz" y no especifica cuál). No abuses de esto: si por el contexto está razonablemente claro, actúa.
@@ -88,7 +101,7 @@ El usuario te habla en español, de forma natural y coloquial. Tienes cuatro her
   a manual de instrucciones.
 
 Reglas:
-- Usa SIEMPRE una de las cuatro herramientas. Nunca respondas solo texto plano.
+- Usa SIEMPRE una de las cinco herramientas. Nunca respondas solo texto plano.
 - Nunca inventes un deviceId o routineId que no esté en las listas proporcionadas.
 - Si la petición es ambigua pero solo hay una opción razonable dado el contexto (p.ej. solo hay una tele),
   actúa directamente en vez de preguntar.`;
@@ -127,10 +140,18 @@ const GROQ_TOOLS = [
       parameters: TOOLS[3].input_schema,
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "play_content",
+      description: TOOLS[4].description,
+      parameters: TOOLS[4].input_schema,
+    },
+  },
 ];
 
 export interface NluResult {
-  kind: "actions" | "routine" | "clarify" | "chat" | "error";
+  kind: "actions" | "routine" | "clarify" | "chat" | "content" | "error";
   message: string;
 }
 
@@ -159,6 +180,11 @@ async function handleToolCall(name: string, input: any, text: string): Promise<N
 
   if (name === "chat") {
     return { kind: "chat", message: input.response };
+  }
+
+  if (name === "play_content") {
+    const result = await playOnEmby(input.query);
+    return { kind: "content", message: result.message };
   }
 
   if (name === "run_routine") {
