@@ -1,4 +1,4 @@
-const CACHE = "homehub-v1";
+const CACHE = "homehub-v2";
 const CORE_ASSETS = ["/", "/styles.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
@@ -13,12 +13,18 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Red primero para la API, caché primero para el resto (para que la app cargue offline)
+// Red primero para todo (así los despliegues nuevos llegan siempre), con caché como respaldo offline
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith("/api/")) return; // no cachear llamadas a la API
 
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((resp) => {
+        const copy = resp.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        return resp;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
