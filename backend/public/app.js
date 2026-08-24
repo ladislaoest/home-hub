@@ -22,10 +22,22 @@ async function api(path, options = {}) {
   return data;
 }
 
+let esVoice = null;
+if ("speechSynthesis" in window) {
+  const pickVoice = () => {
+    const voices = speechSynthesis.getVoices();
+    esVoice = voices.find((v) => v.lang === "es-ES") || voices.find((v) => v.lang.startsWith("es")) || null;
+  };
+  pickVoice();
+  speechSynthesis.onvoiceschanged = pickVoice;
+}
+
 function speakText(text) {
-  if (!("speechSynthesis" in window)) return;
+  if (!("speechSynthesis" in window) || !text) return;
+  speechSynthesis.cancel(); // limpia la cola si se quedó atascada (bug conocido en Chrome/Android)
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "es-ES";
+  if (esVoice) utter.voice = esVoice;
   speechSynthesis.speak(utter);
 }
 

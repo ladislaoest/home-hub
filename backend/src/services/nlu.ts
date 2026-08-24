@@ -28,9 +28,13 @@ const TOOLS: Anthropic.Tool[] = [
               action: {
                 type: "string",
                 description:
-                  "turn_on | turn_off | set_brightness | set_color | volume_up | volume_down | set_volume | mute | unmute | launch_app | set_channel",
+                  "turn_on | turn_off | set_brightness | set_color | volume_up | volume_down | set_volume | mute | unmute | launch_app | search | set_channel",
               },
-              params: { type: "object", description: "parámetros opcionales, ej: {level: 50}" },
+              params: {
+                type: "object",
+                description:
+                  "parámetros opcionales, ej: {level: 50}. Para launch_app, params.appId debe ser uno de: youtube, netflix, primevideo, disneyplus, spotify, hbomax, appletv, movistarplus. Para search (buscar contenido en la tele), params.query es el texto a buscar, ej: {query: 'lofi hip hop'}.",
+              },
             },
             required: ["deviceId", "action"],
           },
