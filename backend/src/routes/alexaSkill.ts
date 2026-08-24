@@ -31,6 +31,9 @@ alexaSkillRouter.post("/", async (req, res) => {
     if (intentName === "AMAZON.StopIntent" || intentName === "AMAZON.CancelIntent") {
       return res.json(alexaResponse("Hasta luego.", true));
     }
+    if (intentName === "EsperaIntent") {
+      return res.json(alexaResponse("Vale, aquí espero.", false, "¿Sí?"));
+    }
     if (intentName === "AMAZON.HelpIntent") {
       return res.json(
         alexaResponse(
