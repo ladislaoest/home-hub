@@ -7,3 +7,7 @@ dist/
 *.db-wal
 backend/data/
 .DS_Store
+
+# Proyectos ajenos a HomeHub que viven en esta carpeta de escritorio
+/JARVIS/
+/domotica/

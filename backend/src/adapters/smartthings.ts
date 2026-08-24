@@ -30,7 +30,10 @@ export const smartThingsAdapter: ProviderAdapter = {
         .flatMap((c: any) => c.capabilities || [])
         .map((c: any) => c.id);
 
-      const isTv = (d.ocfDeviceType || "").toLowerCase().includes("tv") || (d.name || "").toLowerCase().includes("tv");
+      const isTv =
+        (d.ocf?.ocfDeviceType || "").toLowerCase().includes("tv") ||
+        (d.deviceTypeName || "").toLowerCase().includes("tv") ||
+        (d.name || "").toLowerCase().includes("tv");
 
       return {
         externalId: d.deviceId,
