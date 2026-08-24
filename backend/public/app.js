@@ -23,10 +23,14 @@ async function api(path, options = {}) {
 }
 
 let esVoice = null;
+const MALE_VOICE_HINTS = ["male", "hombre", "jorge", "diego", "pablo", "carlos", "enrique", "fernando", "miguel", "alvaro", "álvaro", "javier"];
+const FEMALE_VOICE_HINTS = ["female", "mujer", "monica", "mónica", "paulina", "marisol", "conchita", "lucia", "lucía", "elvira", "helena"];
 if ("speechSynthesis" in window) {
   const pickVoice = () => {
-    const voices = speechSynthesis.getVoices();
-    esVoice = voices.find((v) => v.lang === "es-ES") || voices.find((v) => v.lang.startsWith("es")) || null;
+    const esVoices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("es"));
+    const male = esVoices.find((v) => MALE_VOICE_HINTS.some((h) => v.name.toLowerCase().includes(h)));
+    const notFemale = esVoices.find((v) => !FEMALE_VOICE_HINTS.some((h) => v.name.toLowerCase().includes(h)));
+    esVoice = male || notFemale || esVoices[0] || null;
   };
   pickVoice();
   speechSynthesis.onvoiceschanged = pickVoice;
@@ -157,7 +161,9 @@ const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRec
 let recognizer = null;
 let listening = false;
 let alwaysOn = false;
-let awaitingCommand = false; // true justo después de decir "Jarvis" sin más, esperando la orden
+let sessionActive = false; // true tras decir "Jarvis" (o pulsar el botón): ventana en la que no hace falta repetirlo
+let sessionTimer = null;
+const SESSION_TIMEOUT_MS = 20000; // tras 20s sin hablar, hay que decir "Jarvis" de nuevo
 
 const WAKE_WORDS = ["jarvis"];
 
@@ -168,6 +174,25 @@ function extractCommandAfterWakeWord(text) {
     if (idx !== -1) return text.slice(idx + w.length).trim();
   }
   return null; // no se dijo la palabra de activación
+}
+
+function startSession() {
+  sessionActive = true;
+  micStatus.textContent = "Te escucho…";
+  resetSessionTimer();
+}
+
+function resetSessionTimer() {
+  if (sessionTimer) clearTimeout(sessionTimer);
+  sessionTimer = setTimeout(() => {
+    sessionActive = false;
+    micStatus.textContent = 'En espera: di "Jarvis" para activarme';
+  }, SESSION_TIMEOUT_MS);
+}
+
+function endSession() {
+  sessionActive = false;
+  if (sessionTimer) clearTimeout(sessionTimer);
 }
 
 if (SpeechRecognitionImpl) {
@@ -183,19 +208,18 @@ if (SpeechRecognitionImpl) {
       return;
     }
 
-    if (awaitingCommand) {
-      awaitingCommand = false;
+    if (sessionActive) {
+      resetSessionTimer();
       if (text.trim()) sendCommand(text.trim());
       return;
     }
 
     const command = extractCommandAfterWakeWord(text);
     if (command === null) return; // no dijo "Jarvis": lo ignoramos, no mandamos nada al servidor
+    startSession();
     if (command) {
       sendCommand(command);
     } else {
-      awaitingCommand = true;
-      micStatus.textContent = "¿Sí? Dime…";
       speakText("Dime");
     }
   };
@@ -214,7 +238,6 @@ if (SpeechRecognitionImpl) {
       try {
         recognizer.start();
       } catch (e) {}
-      micStatus.textContent = 'Escuchando… di "Jarvis" y tu petición';
     } else if (!alwaysOn) {
       micStatus.textContent = "Pulsa y habla, o escribe abajo";
     }
@@ -223,8 +246,7 @@ if (SpeechRecognitionImpl) {
   micBtn.addEventListener("click", () => {
     if (alwaysOn) {
       // Atajo: sirve para no tener que decir "Jarvis" primero
-      awaitingCommand = true;
-      micStatus.textContent = "Te escucho…";
+      startSession();
       return;
     }
     if (listening) {
@@ -250,7 +272,7 @@ if (SpeechRecognitionImpl) {
       } catch (err) {}
     } else {
       listening = false;
-      awaitingCommand = false;
+      endSession();
       micBtn.classList.remove("listening");
       recognizer.stop();
       micStatus.textContent = "Pulsa y habla, o escribe abajo";

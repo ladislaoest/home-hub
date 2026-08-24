@@ -61,19 +61,37 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["question"],
     },
   },
+  {
+    name: "chat",
+    description:
+      "Usa esto cuando el usuario NO te está pidiendo controlar un dispositivo ni ejecutar una rutina: charla, preguntas, opiniones, saludos, o cuando ya has hecho una acción y quieres comentar algo al respecto.",
+    input_schema: {
+      type: "object",
+      properties: { response: { type: "string", description: "tu respuesta, en español, natural y breve" } },
+      required: ["response"],
+    },
+  },
 ];
 
-const SYSTEM_PROMPT = `Eres el asistente de una casa domótica personalizada (HomeHub). El usuario te habla en español,
-de forma natural y coloquial, y tú debes traducir lo que pide en llamadas a herramientas para controlar
-sus dispositivos (TV Samsung, bombillas, etc.) o ejecutar rutinas guardadas.
+const SYSTEM_PROMPT = `Eres Jarvis, el asistente de una casa domótica personalizada (HomeHub). No eres un simple
+ejecutor de comandos: eres un compañero con criterio propio. Piensas antes de responder, entiendes el contexto
+de lo que te dicen (no solo palabras clave sueltas) y tienes un tono cercano, eficiente y con un puntito de
+ingenio — nunca seco, nunca un robot que solo dice "Hecho".
+
+El usuario te habla en español, de forma natural y coloquial. Tienes cuatro herramientas:
+- execute_actions: para controlar uno o varios dispositivos (TV, luces, etc.) directamente.
+- run_routine: cuando la petición coincide claramente con una rutina ya guardada por el usuario.
+- clarify: cuando falta información real para saber a qué dispositivo/acción se refiere (p.ej. hay varias
+  "luz" y no especifica cuál). No abuses de esto: si por el contexto está razonablemente claro, actúa.
+- chat: cuando no te está pidiendo controlar nada — te saluda, te pregunta algo, opina, bromea, o simplemente
+  habla contigo. Respóndele como lo haría un compañero de verdad: con naturalidad, en 1-3 frases, sin sonar
+  a manual de instrucciones.
 
 Reglas:
-- Usa SIEMPRE una herramienta (execute_actions, run_routine o clarify). Nunca respondas solo texto.
-- Si la petición coincide claramente con el nombre de una rutina existente, usa run_routine.
-- Si pide algo directo sobre uno o varios dispositivos ("enciende la luz del salón", "sube el volumen de la tele"),
-  usa execute_actions con los deviceId correctos según la lista de dispositivos que se te da.
-- Si no está claro a qué dispositivo se refiere (por ejemplo hay varias "luz" y no especifica cuál), usa clarify.
-- Nunca inventes un deviceId o routineId que no esté en las listas proporcionadas.`;
+- Usa SIEMPRE una de las cuatro herramientas. Nunca respondas solo texto plano.
+- Nunca inventes un deviceId o routineId que no esté en las listas proporcionadas.
+- Si la petición es ambigua pero solo hay una opción razonable dado el contexto (p.ej. solo hay una tele),
+  actúa directamente en vez de preguntar.`;
 
 // Mismas herramientas que TOOLS pero en formato OpenAI (el que usa la API de Groq)
 const GROQ_TOOLS = [
@@ -101,10 +119,18 @@ const GROQ_TOOLS = [
       parameters: TOOLS[2].input_schema,
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "chat",
+      description: TOOLS[3].description,
+      parameters: TOOLS[3].input_schema,
+    },
+  },
 ];
 
 export interface NluResult {
-  kind: "actions" | "routine" | "clarify" | "error";
+  kind: "actions" | "routine" | "clarify" | "chat" | "error";
   message: string;
 }
 
@@ -129,6 +155,10 @@ function buildUserContent(text: string): string {
 async function handleToolCall(name: string, input: any, text: string): Promise<NluResult> {
   if (name === "clarify") {
     return { kind: "clarify", message: input.question };
+  }
+
+  if (name === "chat") {
+    return { kind: "chat", message: input.response };
   }
 
   if (name === "run_routine") {
