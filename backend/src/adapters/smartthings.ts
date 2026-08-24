@@ -103,7 +103,13 @@ export const smartThingsAdapter: ProviderAdapter = {
       mute: { capability: "audioMute", command: "mute" },
       unmute: { capability: "audioMute", command: "unmute" },
       launch_app: { capability: "custom.launchapp", command: "launchApp", args: [resolveAppId(params.appId)] },
-      search: { capability: "custom.tvsearch", command: "search", args: [String(params.query || ""), ""] },
+      search: {
+        capability: "custom.tvsearch",
+        command: "search",
+        // El segundo argumento (url) es obligatorio para SmartThings; sin él cae al buscador
+        // genérico del TV en vez de ir directo a resultados de YouTube.
+        args: [String(params.query || ""), `https://www.youtube.com/results?search_query=${encodeURIComponent(params.query || "")}`],
+      },
       set_channel: { capability: "tvChannel", command: "setTvChannel", args: [String(params.channel)] },
       set_brightness: { capability: "switchLevel", command: "setLevel", args: [params.level ?? 100] },
     };
