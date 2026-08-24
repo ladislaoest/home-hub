@@ -32,14 +32,42 @@ if ("speechSynthesis" in window) {
   speechSynthesis.onvoiceschanged = pickVoice;
 }
 
+let isSpeaking = false;
+
 function speakText(text) {
   if (!("speechSynthesis" in window) || !text) return;
   speechSynthesis.cancel(); // limpia la cola si se quedó atascada (bug conocido en Chrome/Android)
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "es-ES";
   if (esVoice) utter.voice = esVoice;
+
+  // Mientras habla, paramos el reconocimiento para que no se escuche a sí misma y se lo tome como un comando
+  isSpeaking = true;
+  if (alwaysOn && recognizer) {
+    try {
+      recognizer.stop();
+    } catch (e) {}
+  }
+  utter.onend = utter.onerror = () => {
+    isSpeaking = false;
+    if (alwaysOn && recognizer) {
+      try {
+        recognizer.start();
+      } catch (e) {}
+    }
+  };
   speechSynthesis.speak(utter);
 }
+
+document.getElementById("test-voice-btn").addEventListener("click", () => {
+  if (!("speechSynthesis" in window)) {
+    micStatus.textContent = "Este navegador no tiene síntesis de voz (speechSynthesis no existe).";
+    return;
+  }
+  const voices = speechSynthesis.getVoices();
+  micStatus.textContent = `Voces disponibles: ${voices.length}${esVoice ? " · usando " + esVoice.name : " · sin voz es-ES, usando la del sistema"}`;
+  speakText("Hola, esto es una prueba de voz de Home Hub");
+});
 
 // ---------- Login ----------
 const loginScreen = document.getElementById("login-screen");
@@ -128,27 +156,77 @@ document.getElementById("text-form").addEventListener("submit", (e) => {
 const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognizer = null;
 let listening = false;
+let alwaysOn = false;
+let awaitingCommand = false; // true justo después de decir "Jarvis" sin más, esperando la orden
+
+const WAKE_WORDS = ["jarvis"];
+
+function extractCommandAfterWakeWord(text) {
+  const lower = text.toLowerCase();
+  for (const w of WAKE_WORDS) {
+    const idx = lower.indexOf(w);
+    if (idx !== -1) return text.slice(idx + w.length).trim();
+  }
+  return null; // no se dijo la palabra de activación
+}
 
 if (SpeechRecognitionImpl) {
   recognizer = new SpeechRecognitionImpl();
   recognizer.lang = "es-ES";
-  recognizer.continuous = false;
   recognizer.interimResults = false;
 
   recognizer.onresult = (event) => {
-    const text = event.results[0][0].transcript;
-    sendCommand(text);
+    const text = event.results[event.results.length - 1][0].transcript;
+
+    if (!alwaysOn) {
+      sendCommand(text);
+      return;
+    }
+
+    if (awaitingCommand) {
+      awaitingCommand = false;
+      if (text.trim()) sendCommand(text.trim());
+      return;
+    }
+
+    const command = extractCommandAfterWakeWord(text);
+    if (command === null) return; // no dijo "Jarvis": lo ignoramos, no mandamos nada al servidor
+    if (command) {
+      sendCommand(command);
+    } else {
+      awaitingCommand = true;
+      micStatus.textContent = "¿Sí? Dime…";
+      speakText("Dime");
+    }
   };
-  recognizer.onerror = () => {
-    micStatus.textContent = "No te he entendido, inténtalo de nuevo.";
+
+  recognizer.onerror = (e) => {
+    if (!alwaysOn && e.error !== "no-speech") {
+      micStatus.textContent = "No te he entendido, inténtalo de nuevo.";
+    }
   };
+
   recognizer.onend = () => {
     listening = false;
     micBtn.classList.remove("listening");
-    micStatus.textContent = "Pulsa y habla, o escribe abajo";
+    if (alwaysOn && !isSpeaking) {
+      // En modo siempre-escuchando, Chrome corta el reconocimiento tras cada silencio; lo reiniciamos.
+      try {
+        recognizer.start();
+      } catch (e) {}
+      micStatus.textContent = 'Escuchando… di "Jarvis" y tu petición';
+    } else if (!alwaysOn) {
+      micStatus.textContent = "Pulsa y habla, o escribe abajo";
+    }
   };
 
   micBtn.addEventListener("click", () => {
+    if (alwaysOn) {
+      // Atajo: sirve para no tener que decir "Jarvis" primero
+      awaitingCommand = true;
+      micStatus.textContent = "Te escucho…";
+      return;
+    }
     if (listening) {
       recognizer.stop();
       return;
@@ -158,9 +236,30 @@ if (SpeechRecognitionImpl) {
     micStatus.textContent = "Escuchando…";
     recognizer.start();
   });
+
+  document.getElementById("wake-toggle-btn").addEventListener("click", (e) => {
+    alwaysOn = !alwaysOn;
+    recognizer.continuous = alwaysOn;
+    e.target.textContent = alwaysOn ? '🎙️ Desactivar "Jarvis"' : '🎙️ Activar palabra "Jarvis"';
+    if (alwaysOn) {
+      listening = true;
+      micBtn.classList.add("listening");
+      micStatus.textContent = 'Escuchando… di "Jarvis" y tu petición';
+      try {
+        recognizer.start();
+      } catch (err) {}
+    } else {
+      listening = false;
+      awaitingCommand = false;
+      micBtn.classList.remove("listening");
+      recognizer.stop();
+      micStatus.textContent = "Pulsa y habla, o escribe abajo";
+    }
+  });
 } else {
   micStatus.textContent = "Tu navegador no soporta reconocimiento de voz. Usa el campo de texto o prueba en Chrome/Android.";
   micBtn.disabled = true;
+  document.getElementById("wake-toggle-btn").disabled = true;
 }
 
 // ---------- Dispositivos ----------
