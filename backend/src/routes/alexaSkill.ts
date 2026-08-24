@@ -42,7 +42,10 @@ alexaSkillRouter.post("/", async (req, res) => {
 
     try {
       const result = await interpretCommand(texto);
-      return res.json(alexaResponse(result.message, result.kind !== "clarify"));
+      // Dejamos la sesión abierta tras cada respuesta: así, después de la primera vez
+      // ("Alexa, abre Jarvis" o "Alexa, pregunta a Jarvis que..."), puedes seguir dando
+      // órdenes seguidas ("que suba el volumen", "que apague la luz"...) sin repetir "Alexa".
+      return res.json(alexaResponse(result.message, false));
     } catch (err: any) {
       return res.json(alexaResponse("Ha habido un error hablando con Jarvis.", true));
     }
