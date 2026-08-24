@@ -18,7 +18,7 @@ alexaSkillRouter.post("/", async (req, res) => {
   const type = body.request?.type;
 
   if (type === "LaunchRequest") {
-    return res.json(alexaResponse("Hola, soy Jarvis. ¿Qué necesitas?", false));
+    return res.json(alexaResponse("Hola, soy Jarvis. ¿Qué necesitas?", false, "¿Qué necesitas?"));
   }
 
   if (type === "SessionEndedRequest") {
@@ -32,20 +32,27 @@ alexaSkillRouter.post("/", async (req, res) => {
       return res.json(alexaResponse("Hasta luego.", true));
     }
     if (intentName === "AMAZON.HelpIntent") {
-      return res.json(alexaResponse("Puedes pedirme que controle tus dispositivos o ejecute una rutina, por ejemplo: enciende la luz del salón.", false));
+      return res.json(
+        alexaResponse(
+          "Puedes pedirme que controle tus dispositivos o ejecute una rutina, por ejemplo: que encienda la luz del salón.",
+          false,
+          "¿Qué necesitas?"
+        )
+      );
     }
 
     const texto = body.request.intent?.slots?.texto?.value;
     if (!texto) {
-      return res.json(alexaResponse("No te he entendido, ¿puedes repetirlo?", false));
+      return res.json(alexaResponse("No te he entendido, ¿puedes repetirlo?", false, "¿Puedes repetirlo?"));
     }
 
     try {
       const result = await interpretCommand(texto);
-      // Dejamos la sesión abierta tras cada respuesta: así, después de la primera vez
+      // Dejamos la sesión abierta tras cada respuesta, con reprompt: así, después de la primera vez
       // ("Alexa, abre Jarvis" o "Alexa, pregunta a Jarvis que..."), puedes seguir dando
-      // órdenes seguidas ("que suba el volumen", "que apague la luz"...) sin repetir "Alexa".
-      return res.json(alexaResponse(result.message, false));
+      // órdenes seguidas ("que suba el volumen", "que apague la luz"...) sin repetir "Alexa",
+      // y si te quedas callado unos segundos te vuelve a preguntar en vez de colgar directamente.
+      return res.json(alexaResponse(result.message, false, "¿Algo más?"));
     } catch (err: any) {
       return res.json(alexaResponse("Ha habido un error hablando con Jarvis.", true));
     }
@@ -54,12 +61,13 @@ alexaSkillRouter.post("/", async (req, res) => {
   return res.json({ version: "1.0", response: {} });
 });
 
-function alexaResponse(text: string, endSession: boolean) {
-  return {
-    version: "1.0",
-    response: {
-      outputSpeech: { type: "PlainText", text },
-      shouldEndSession: endSession,
-    },
+function alexaResponse(text: string, endSession: boolean, repromptText?: string) {
+  const response: any = {
+    outputSpeech: { type: "PlainText", text },
+    shouldEndSession: endSession,
   };
+  if (!endSession && repromptText) {
+    response.reprompt = { outputSpeech: { type: "PlainText", text: repromptText } };
+  }
+  return { version: "1.0", response };
 }
