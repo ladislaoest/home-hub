@@ -30,6 +30,7 @@ const APP_IDS: Record<string, string> = {
   appletv: "3201807016597",
   appletvplus: "3201807016597",
   movistarplus: "3201710015037",
+  emby: "3201606009872",
 };
 
 function resolveAppId(raw: string | undefined): string | undefined {
