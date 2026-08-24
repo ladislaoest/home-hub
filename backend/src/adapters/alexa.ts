@@ -44,20 +44,54 @@ async function speakViaRoutine(phraseKey: string): Promise<ActionResult> {
   return smartThingsAdapter.execute(switchId, "turn_on");
 }
 
+// Dominio regional de Amazon (la cookie de sesión es específica de cada dominio: alexa.amazon.es,
+// alexa.amazon.com, alexa.amazon.co.uk... tiene que coincidir con dónde iniciaste sesión).
+const ALEXA_DOMAIN = process.env.ALEXA_DOMAIN || "alexa.amazon.es";
+
+interface AlexaDeviceInfo {
+  serialNumber: string;
+  deviceType: string;
+  deviceOwnerCustomerId: string;
+  accountName: string;
+}
+
+/** Busca el Echo al que hablarle: por serial si se configuró ALEXA_ANNOUNCE_DEVICE_SERIAL, si no el primer Echo Show, si no el primero con micrófono. */
+async function findTargetDevice(cookie: string): Promise<AlexaDeviceInfo | null> {
+  const resp = await fetch(`https://${ALEXA_DOMAIN}/api/devices-v2/device`, {
+    headers: { Cookie: cookie, "User-Agent": "Mozilla/5.0" },
+  });
+  if (!resp.ok) return null;
+  const data: any = await resp.json();
+  const devices: any[] = data.devices || [];
+
+  const wantedSerial = process.env.ALEXA_ANNOUNCE_DEVICE_SERIAL;
+  const match =
+    (wantedSerial && devices.find((d) => d.serialNumber === wantedSerial)) ||
+    devices.find((d) => (d.accountName || "").toLowerCase().includes("show")) ||
+    devices.find((d) => (d.capabilities || []).includes("MICROPHONE"));
+
+  if (!match) return null;
+  return {
+    serialNumber: match.serialNumber,
+    deviceType: match.deviceType,
+    deviceOwnerCustomerId: match.deviceOwnerCustomerId,
+    accountName: match.accountName,
+  };
+}
+
 async function speakUnofficial(text: string): Promise<ActionResult> {
   const cookie = process.env.ALEXA_COOKIE;
-  const serial = process.env.ALEXA_ANNOUNCE_DEVICE_SERIAL;
-  if (!cookie || !serial) {
-    return { ok: false, message: "Falta ALEXA_COOKIE o ALEXA_ANNOUNCE_DEVICE_SERIAL en el .env" };
+  if (!cookie) {
+    return { ok: false, message: "Falta ALEXA_COOKIE en el .env" };
   }
 
   try {
-    // 1. Pedimos un token CSRF válido (Amazon lo exige para llamadas que cambian estado)
-    const csrfResp = await fetch("https://alexa.amazon.com/api/language", {
-      headers: { Cookie: cookie },
-    });
-    const csrfCookieHeader = csrfResp.headers.get("set-cookie") || "";
-    const csrfMatch = csrfCookieHeader.match(/csrf=([^;]+)/) || cookie.match(/csrf=([^;]+)/);
+    const device = await findTargetDevice(cookie);
+    if (!device) {
+      return { ok: false, message: "No encontré ningún altavoz Alexa al que hablar (revisa ALEXA_COOKIE/ALEXA_ANNOUNCE_DEVICE_SERIAL)." };
+    }
+
+    const csrfMatch = cookie.match(/csrf=([^;]+)/);
     const csrf = csrfMatch ? csrfMatch[1] : "";
 
     const payload = {
@@ -67,9 +101,11 @@ async function speakUnofficial(text: string): Promise<ActionResult> {
         startNode: {
           "@type": "com.amazon.alexa.behaviors.model.OpaquePayloadOperationNode",
           type: "Alexa.Speak",
+          skillId: "amzn1.ask.1p.saysomething",
           operationPayload: {
-            deviceType: "ALEXA_CURRENT_DEVICE_TYPE",
-            deviceSerialNumber: serial,
+            deviceType: device.deviceType,
+            deviceSerialNumber: device.serialNumber,
+            customerId: device.deviceOwnerCustomerId,
             locale: "es-ES",
             textToSpeak: text,
           },
@@ -78,7 +114,7 @@ async function speakUnofficial(text: string): Promise<ActionResult> {
       status: "ENABLED",
     };
 
-    const resp = await fetch("https://alexa.amazon.com/api/behaviors/preview", {
+    const resp = await fetch(`https://${ALEXA_DOMAIN}/api/behaviors/preview`, {
       method: "POST",
       headers: {
         Cookie: cookie,
@@ -91,7 +127,7 @@ async function speakUnofficial(text: string): Promise<ActionResult> {
     if (!resp.ok) {
       return { ok: false, message: `Alexa (no oficial) falló: ${resp.status} ${await resp.text()}` };
     }
-    return { ok: true, message: "Texto enviado a Alexa (modo no oficial)" };
+    return { ok: true, message: `Texto enviado a ${device.accountName}` };
   } catch (err: any) {
     return { ok: false, message: `Error llamando a Alexa (no oficial): ${err.message}` };
   }
@@ -102,7 +138,7 @@ export const alexaAdapter: ProviderAdapter = {
 
   isConfigured() {
     const mode = process.env.ALEXA_ANNOUNCE_MODE || "routine";
-    if (mode === "unofficial") return !!(process.env.ALEXA_COOKIE && process.env.ALEXA_ANNOUNCE_DEVICE_SERIAL);
+    if (mode === "unofficial") return !!process.env.ALEXA_COOKIE;
     return true; // el modo "routine" reutiliza SmartThings, no necesita config propia extra
   },
 

@@ -38,5 +38,7 @@ services:
         value: routine
       - key: ALEXA_COOKIE
         sync: false
+      - key: ALEXA_DOMAIN
+        value: alexa.amazon.es
       - key: ALEXA_ANNOUNCE_DEVICE_SERIAL
         sync: false
