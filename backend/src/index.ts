@@ -8,6 +8,7 @@ import { devicesRouter } from "./routes/devices";
 import { routinesRouter } from "./routes/routines";
 import { commandRouter } from "./routes/command";
 import { settingsRouter } from "./routes/settings";
+import { alexaSkillRouter } from "./routes/alexaSkill";
 import { requireAuth } from "./auth";
 import { initScheduler } from "./services/routineEngine";
 
@@ -17,6 +18,7 @@ app.use(express.json());
 
 // Rutas públicas
 app.use("/api/auth", authRouter);
+app.use("/api/alexa-skill", alexaSkillRouter); // llamada por Alexa, no por el login de la app
 
 // Rutas protegidas (requieren estar logueado)
 app.use("/api/devices", requireAuth, devicesRouter);
