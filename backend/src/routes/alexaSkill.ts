@@ -34,6 +34,20 @@ alexaSkillRouter.post("/", async (req, res) => {
     if (intentName === "EsperaIntent") {
       return res.json(alexaResponse("Vale, aquí espero.", false, "¿Sí?"));
     }
+
+    // Frases fijas frecuentes que no necesitan el conector "que" delante
+    const FIXED_TEXT_INTENTS: Record<string, string> = {
+      EncenderTeleIntent: "enciende la tele",
+      ApagarTeleIntent: "apaga la tele",
+    };
+    if (FIXED_TEXT_INTENTS[intentName]) {
+      try {
+        const result = await interpretCommand(FIXED_TEXT_INTENTS[intentName]);
+        return res.json(alexaResponse(result.message, false, "¿Algo más?"));
+      } catch (err: any) {
+        return res.json(alexaResponse("Ha habido un error hablando con Jarvis.", true));
+      }
+    }
     if (intentName === "AMAZON.HelpIntent") {
       return res.json(
         alexaResponse(
