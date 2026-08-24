@@ -22,18 +22,33 @@ async function api(path, options = {}) {
   return data;
 }
 
+const VOICE_PREF_KEY = "homehub_voice_name";
 let esVoice = null;
 const MALE_VOICE_HINTS = ["male", "hombre", "jorge", "diego", "pablo", "carlos", "enrique", "fernando", "miguel", "alvaro", "álvaro", "javier"];
-const FEMALE_VOICE_HINTS = ["female", "mujer", "monica", "mónica", "paulina", "marisol", "conchita", "lucia", "lucía", "elvira", "helena"];
+
+function populateVoiceSelect() {
+  const select = document.getElementById("voice-select");
+  if (!select) return;
+  const esVoices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("es"));
+  const saved = localStorage.getItem(VOICE_PREF_KEY);
+
+  select.innerHTML = esVoices.map((v) => `<option value="${v.name}">${v.name} (${v.lang})</option>`).join("");
+
+  let chosen = esVoices.find((v) => v.name === saved);
+  if (!chosen) chosen = esVoices.find((v) => MALE_VOICE_HINTS.some((h) => v.name.toLowerCase().includes(h)));
+  if (!chosen) chosen = esVoices[0];
+  esVoice = chosen || null;
+  if (esVoice) select.value = esVoice.name;
+}
+
 if ("speechSynthesis" in window) {
-  const pickVoice = () => {
+  populateVoiceSelect();
+  speechSynthesis.onvoiceschanged = populateVoiceSelect;
+  document.getElementById("voice-select").addEventListener("change", (e) => {
     const esVoices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("es"));
-    const male = esVoices.find((v) => MALE_VOICE_HINTS.some((h) => v.name.toLowerCase().includes(h)));
-    const notFemale = esVoices.find((v) => !FEMALE_VOICE_HINTS.some((h) => v.name.toLowerCase().includes(h)));
-    esVoice = male || notFemale || esVoices[0] || null;
-  };
-  pickVoice();
-  speechSynthesis.onvoiceschanged = pickVoice;
+    esVoice = esVoices.find((v) => v.name === e.target.value) || null;
+    if (esVoice) localStorage.setItem(VOICE_PREF_KEY, esVoice.name);
+  });
 }
 
 let isSpeaking = false;
@@ -82,6 +97,7 @@ function showApp() {
   appScreen.classList.remove("hidden");
   loadDevices();
   loadRoutines();
+  checkAutoActivateAtHome();
 }
 
 function showLogin() {
@@ -259,30 +275,81 @@ if (SpeechRecognitionImpl) {
     recognizer.start();
   });
 
-  document.getElementById("wake-toggle-btn").addEventListener("click", (e) => {
-    alwaysOn = !alwaysOn;
-    recognizer.continuous = alwaysOn;
-    e.target.textContent = alwaysOn ? '🎙️ Desactivar "Jarvis"' : '🎙️ Activar palabra "Jarvis"';
-    if (alwaysOn) {
-      listening = true;
-      micBtn.classList.add("listening");
-      micStatus.textContent = 'Escuchando… di "Jarvis" y tu petición';
-      try {
-        recognizer.start();
-      } catch (err) {}
-    } else {
-      listening = false;
-      endSession();
-      micBtn.classList.remove("listening");
-      recognizer.stop();
-      micStatus.textContent = "Pulsa y habla, o escribe abajo";
-    }
-  });
+  document.getElementById("wake-toggle-btn").addEventListener("click", () => setAlwaysOn(!alwaysOn));
 } else {
   micStatus.textContent = "Tu navegador no soporta reconocimiento de voz. Usa el campo de texto o prueba en Chrome/Android.";
   micBtn.disabled = true;
   document.getElementById("wake-toggle-btn").disabled = true;
 }
+
+function setAlwaysOn(on) {
+  if (!recognizer) return;
+  alwaysOn = on;
+  recognizer.continuous = on;
+  document.getElementById("wake-toggle-btn").textContent = on ? '🎙️ Desactivar "Jarvis"' : '🎙️ Activar palabra "Jarvis"';
+  if (on) {
+    listening = true;
+    micBtn.classList.add("listening");
+    micStatus.textContent = 'Escuchando… di "Jarvis" y tu petición';
+    try {
+      recognizer.start();
+    } catch (err) {}
+  } else {
+    listening = false;
+    endSession();
+    micBtn.classList.remove("listening");
+    try {
+      recognizer.stop();
+    } catch (err) {}
+    micStatus.textContent = "Pulsa y habla, o escribe abajo";
+  }
+}
+
+// ---------- Activación automática al llegar a casa (por geolocalización) ----------
+const HOME_LOCATION_KEY = "homehub_home_location";
+const HOME_RADIUS_METERS = 150;
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function saveHomeLocation() {
+  if (!navigator.geolocation) {
+    micStatus.textContent = "Tu navegador no soporta geolocalización.";
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      localStorage.setItem(HOME_LOCATION_KEY, JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }));
+      micStatus.textContent = "Ubicación de casa guardada. Al abrir la app aquí, Jarvis se activará solo.";
+    },
+    () => {
+      micStatus.textContent = "No pude acceder a tu ubicación (revisa los permisos del navegador).";
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function checkAutoActivateAtHome() {
+  const saved = localStorage.getItem(HOME_LOCATION_KEY);
+  if (!saved || !navigator.geolocation || !recognizer || alwaysOn) return;
+  const home = JSON.parse(saved);
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const dist = haversineMeters(pos.coords.latitude, pos.coords.longitude, home.lat, home.lng);
+      if (dist <= HOME_RADIUS_METERS) setAlwaysOn(true);
+    },
+    () => {},
+    { enableHighAccuracy: false, timeout: 8000 }
+  );
+}
+
+document.getElementById("save-home-btn").addEventListener("click", saveHomeLocation);
 
 // ---------- Dispositivos ----------
 const ACTIONS_BY_TYPE = {

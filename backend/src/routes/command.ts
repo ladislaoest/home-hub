@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { interpretCommand } from "../services/nlu";
+import { speak } from "../services/deviceManager";
 
 export const commandRouter = Router();
 
@@ -12,6 +13,12 @@ commandRouter.post("/", async (req, res) => {
   }
   try {
     const result = await interpretCommand(text);
+
+    // Si Alexa está en modo "unofficial" (texto libre), que también responda por el Echo
+    if (process.env.ALEXA_ANNOUNCE_MODE === "unofficial" && result.message) {
+      speak("alexa", result.message).catch(() => {});
+    }
+
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ kind: "error", message: err.message });

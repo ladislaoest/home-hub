@@ -226,3 +226,30 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 #cancel-routine-btn { background: transparent; color: var(--muted); }
 #routine-form button[type="submit"] { background: var(--accent); color: #0f172a; font-weight: 700; }
 #add-action-btn { align-self: flex-start; background: none; border: 1px dashed #334155; color: var(--muted); padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+
+/* --- Ajustes --- */
+.settings-group {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.settings-group h3 { margin: 0 0 10px; font-size: 1rem; }
+.settings-group label { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; color: var(--muted); margin-bottom: 12px; }
+.settings-group select {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: var(--text);
+  font-size: 15px;
+}
+.settings-group button {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#wake-toggle-btn { margin-top: 8px; }

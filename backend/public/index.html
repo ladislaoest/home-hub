@@ -30,6 +30,7 @@
       <button class="tab-btn active" data-tab="voice">Voz</button>
       <button class="tab-btn" data-tab="devices">Dispositivos</button>
       <button class="tab-btn" data-tab="routines">Rutinas</button>
+      <button class="tab-btn" data-tab="settings">Ajustes</button>
     </nav>
     <button id="logout-btn" title="Salir">⏻</button>
   </header>
@@ -40,7 +41,6 @@
         <button id="mic-btn" aria-label="Hablar">🎤</button>
         <p id="mic-status" class="muted">Pulsa y habla, o escribe abajo</p>
       </div>
-      <button id="test-voice-btn" type="button">🔊 Probar voz</button>
       <button id="wake-toggle-btn" type="button">🎙️ Activar palabra "Jarvis"</button>
       <div class="transcript" id="transcript"></div>
       <form id="text-form">
@@ -63,6 +63,24 @@
         <button id="new-routine-btn">➕ Nueva rutina</button>
       </div>
       <div id="routines-list" class="card-list"></div>
+    </section>
+
+    <section id="tab-settings" class="tab-panel hidden">
+      <h2>Ajustes</h2>
+
+      <div class="settings-group">
+        <h3>Voz</h3>
+        <label>Voz para hablar
+          <select id="voice-select"></select>
+        </label>
+        <button id="test-voice-btn" type="button">🔊 Probar voz</button>
+      </div>
+
+      <div class="settings-group">
+        <h3>Ubicación</h3>
+        <p class="muted">Guarda tu casa para que "Jarvis" se active solo al abrir la app estando aquí.</p>
+        <button id="save-home-btn" type="button">📍 Guardar esta ubicación como Casa</button>
+      </div>
     </section>
   </main>
 </div>
