@@ -44,6 +44,21 @@ function resolveAppId(raw: string | undefined): string | undefined {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Comprueba el estado real tras un comando, en vez de asumir éxito solo porque SmartThings devolvió 200. */
+async function verifyAttribute(externalId: string, capability: string, attribute: string, expected: string): Promise<boolean> {
+  for (let i = 0; i < 3; i++) {
+    await sleep(1500);
+    const resp = await fetch(`${API_BASE}/devices/${externalId}/components/main/capabilities/${capability}/status`, {
+      headers: authHeaders(),
+    });
+    if (resp.ok) {
+      const data: any = await resp.json();
+      if (String(data[attribute]?.value) === expected) return true;
+    }
+  }
+  return false;
+}
+
 /** Si el TV está apagado, launchApp no hace nada aunque SmartThings responda 200. Lo encendemos y esperamos a que arranque. */
 async function ensurePoweredOn(externalId: string): Promise<void> {
   const statusResp = await fetch(`${API_BASE}/devices/${externalId}/components/main/capabilities/switch/status`, {
@@ -142,6 +157,30 @@ export const smartThingsAdapter: ProviderAdapter = {
     if (!resp.ok) {
       return { ok: false, message: `Error SmartThings: ${resp.status} ${await resp.text()}` };
     }
+
+    // Acciones que sí podemos comprobar de verdad consultando el estado después
+    if (action === "turn_on" || action === "turn_off") {
+      const ok = await verifyAttribute(externalId, "switch", "switch", action === "turn_on" ? "on" : "off");
+      return ok
+        ? { ok: true, message: "Hecho." }
+        : { ok: false, message: "Le mandé el comando a la tele pero no he podido confirmar que cambiara de estado — puede estar desconectada." };
+    }
+    if (action === "mute" || action === "unmute") {
+      const ok = await verifyAttribute(externalId, "audioMute", "mute", action === "mute" ? "muted" : "unmuted");
+      return ok
+        ? { ok: true, message: "Hecho." }
+        : { ok: false, message: "Le mandé silenciar/activar el sonido pero no confirmo que se aplicara." };
+    }
+
+    // Acciones que SmartThings no expone forma de verificar (no hay atributo de "app activa" ni de
+    // "resultado de búsqueda"): lo digo con honestidad en vez de afirmar un éxito que no puedo comprobar.
+    if (action === "launch_app") {
+      return { ok: true, message: "Le he pedido a la tele que abra la app. Dime si no se ha abierto, que no tengo forma de confirmarlo desde aquí." };
+    }
+    if (action === "search") {
+      return { ok: true, message: "Le he mandado la búsqueda a la tele. Avísame si no ha aparecido nada." };
+    }
+
     return { ok: true, message: "Comando enviado a SmartThings" };
   },
 };

@@ -197,10 +197,15 @@ async function handleToolCall(name: string, input: any, text: string): Promise<N
 
   if (name === "execute_actions") {
     const result = await runActions(input.actions as RoutineAction[], "voice", text);
-    return {
-      kind: "actions",
-      message: result.ok ? "Hecho." : "He intentado hacerlo pero algo ha fallado con alguno de los dispositivos.",
-    };
+    // Con una sola acción, mostramos el mensaje real del adaptador (puede matizar si no se pudo confirmar
+    // del todo) en vez de un "Hecho." genérico que tape esa información.
+    const message =
+      result.results.length === 1
+        ? result.results[0].message
+        : result.ok
+        ? "Hecho."
+        : "He intentado hacerlo pero algo ha fallado con alguno de los dispositivos.";
+    return { kind: "actions", message };
   }
 
   return { kind: "error", message: "No supe qué hacer con esa petición." };
