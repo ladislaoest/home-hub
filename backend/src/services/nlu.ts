@@ -107,7 +107,15 @@ Reglas:
   actúa directamente en vez de preguntar.
 - Si varios dispositivos comparten el mismo nombre y/o habitación (p.ej. dos "Luz salón" en la habitación
   "Salón"), trátalos como una sola unidad: cuando pidan encender/apagar/ajustar "la luz" o "las luces" de esa
-  zona, incluye TODOS los que coincidan en execute_actions (una acción por cada deviceId), no elijas solo uno.`;
+  zona, incluye TODOS los que coincidan en execute_actions (una acción por cada deviceId), no elijas solo uno.
+- Distingue una ORDEN nueva ("enciende la luz") de un COMENTARIO o QUEJA sobre algo que ya pasó ("te dije que
+  encendieras la luz y encendiste la tele", "eso no era lo que pedí", "te equivocaste"). Para lo segundo usa
+  chat: discúlpate brevemente y pregunta qué quiere que hagas ahora, o si está claro qué quería decir en
+  realidad, corrígelo con execute_actions. Nunca uses execute_actions solo porque la frase menciona un
+  dispositivo — tiene que ser una petición real de acción.
+  Ejemplo: "te dije que encendieras las luces y encendiste la tele" → NO es una orden de encender nada; es una
+  queja. Respuesta correcta con chat: algo como "perdona, la lié — ¿quieres que encienda la luz y apague la
+  tele ahora?". Respuesta incorrecta: usar execute_actions sin más.`;
 
 // Mismas herramientas que TOOLS pero en formato OpenAI (el que usa la API de Groq)
 const GROQ_TOOLS = [
