@@ -301,6 +301,7 @@ function setAlwaysOn(on) {
     try {
       recognizer.start();
     } catch (err) {}
+    requestWakeLock();
   } else {
     listening = false;
     endSession();
@@ -309,8 +310,36 @@ function setAlwaysOn(on) {
       recognizer.stop();
     } catch (err) {}
     micStatus.textContent = "Pulsa y habla, o escribe abajo";
+    releaseWakeLock();
   }
 }
+
+// ---------- Mantener la pantalla encendida mientras escucha (Screen Wake Lock API) ----------
+// No evita que el micro se corte si BLOQUEAS tú la pantalla a propósito o cambias de app — eso
+// lo corta el sistema operativo sin excepción. Esto solo evita que la pantalla se apague sola
+// por inactividad mientras la app está abierta y escuchando.
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+  } catch (err) {
+    wakeLock = null;
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  // El wake lock se libera solo si la pestaña deja de estar visible; lo recuperamos al volver.
+  if (document.visibilityState === "visible" && alwaysOn && !wakeLock) requestWakeLock();
+});
 
 // ---------- Activación automática al llegar a casa (por geolocalización) ----------
 const HOME_LOCATION_KEY = "homehub_home_location";
