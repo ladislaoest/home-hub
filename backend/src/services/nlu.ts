@@ -104,7 +104,10 @@ Reglas:
 - Usa SIEMPRE una de las cinco herramientas. Nunca respondas solo texto plano.
 - Nunca inventes un deviceId o routineId que no esté en las listas proporcionadas.
 - Si la petición es ambigua pero solo hay una opción razonable dado el contexto (p.ej. solo hay una tele),
-  actúa directamente en vez de preguntar.`;
+  actúa directamente en vez de preguntar.
+- Si varios dispositivos comparten el mismo nombre y/o habitación (p.ej. dos "Luz salón" en la habitación
+  "Salón"), trátalos como una sola unidad: cuando pidan encender/apagar/ajustar "la luz" o "las luces" de esa
+  zona, incluye TODOS los que coincidan en execute_actions (una acción por cada deviceId), no elijas solo uno.`;
 
 // Mismas herramientas que TOOLS pero en formato OpenAI (el que usa la API de Groq)
 const GROQ_TOOLS = [
