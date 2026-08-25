@@ -69,11 +69,7 @@ function speakText(text) {
   }
   utter.onend = utter.onerror = () => {
     isSpeaking = false;
-    if (alwaysOn && recognizer) {
-      try {
-        recognizer.start();
-      } catch (e) {}
-    }
+    if (alwaysOn && recognizer) restartRecognizer();
   };
   speechSynthesis.speak(utter);
 }
@@ -245,14 +241,26 @@ if (SpeechRecognitionImpl) {
     }
   };
 
-  recognizer.onend = () => {
+function restartRecognizer(attempt = 0) {
+  // Reiniciar el reconocimiento demasiado rápido tras el anterior falla en silencio en
+  // Chrome/Android (InvalidStateError); un pequeño margen lo evita. Reintentamos un par de
+  // veces por si el primer intento también falla.
+  setTimeout(() => {
+    if (!alwaysOn || isSpeaking) return;
+    try {
+      recognizer.start();
+    } catch (e) {
+      if (attempt < 3) restartRecognizer(attempt + 1);
+    }
+  }, 300);
+}
+
+recognizer.onend = () => {
     listening = false;
     micBtn.classList.remove("listening");
     if (alwaysOn && !isSpeaking) {
       // En modo siempre-escuchando, Chrome corta el reconocimiento tras cada silencio; lo reiniciamos.
-      try {
-        recognizer.start();
-      } catch (e) {}
+      restartRecognizer();
     } else if (!alwaysOn) {
       micStatus.textContent = "Pulsa y habla, o escribe abajo";
     }
