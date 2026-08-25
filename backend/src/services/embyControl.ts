@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import { ActionResult } from "../adapters/types";
+import { listStoredDevices } from "./deviceManager";
 
 function embyHeaders() {
   return { "X-Emby-Token": process.env.EMBY_API_KEY || "" };
@@ -34,9 +35,16 @@ export async function playOnEmby(query: string): Promise<ActionResult> {
     const sessionsResp = await fetch(`${url}/Sessions`, { headers: embyHeaders() });
     if (!sessionsResp.ok) return { ok: false, message: `Error consultando sesiones de Emby: ${sessionsResp.status}` };
     const sessions: any[] = await sessionsResp.json();
-    const tvSession = sessions.find(
-      (s) => (s.Client || "").toLowerCase().includes("samsung") || (s.DeviceName || "").toLowerCase().includes("tv")
-    );
+
+    // Preferimos hacer match contra el nombre real de la(s) TV que ya tenemos registradas
+    // (p.ej. Emby llama la sesión "75" Crystal UHD"", igual que SmartThings), y si no,
+    // caemos a una heurística genérica por si el nombre no coincide exactamente.
+    const tvNames = listStoredDevices()
+      .filter((d) => d.type === "tv")
+      .map((d) => d.name.toLowerCase());
+    const tvSession =
+      sessions.find((s) => tvNames.some((name) => (s.DeviceName || "").toLowerCase().includes(name) || name.includes((s.DeviceName || "").toLowerCase()))) ||
+      sessions.find((s) => (s.Client || "").toLowerCase().includes("samsung") || (s.DeviceName || "").toLowerCase().includes("tv"));
     if (!tvSession) {
       return { ok: false, message: `Encontré "${item.Name}" pero no veo la app de Emby abierta en la tele. Ábrela primero e inténtalo de nuevo.` };
     }
