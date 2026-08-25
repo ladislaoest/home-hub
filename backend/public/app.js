@@ -55,10 +55,7 @@ let isSpeaking = false;
 
 function speakText(text) {
   if (!("speechSynthesis" in window) || !text) return;
-  speechSynthesis.cancel(); // limpia la cola si se quedó atascada (bug conocido en Chrome/Android)
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = "es-ES";
-  if (esVoice) utter.voice = esVoice;
+  speechSynthesis.cancel();
 
   // Mientras habla, paramos el reconocimiento para que no se escuche a sí misma y se lo tome como un comando
   isSpeaking = true;
@@ -67,11 +64,19 @@ function speakText(text) {
       recognizer.stop();
     } catch (e) {}
   }
-  utter.onend = utter.onerror = () => {
-    isSpeaking = false;
-    if (alwaysOn && recognizer) restartRecognizer();
-  };
-  speechSynthesis.speak(utter);
+
+  // Bug conocido de Chrome: si speak() se llama justo después de cancel(), lo descarta en
+  // silencio sin hablar ni dar error. Un pequeño margen lo evita.
+  setTimeout(() => {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "es-ES";
+    if (esVoice) utter.voice = esVoice;
+    utter.onend = utter.onerror = () => {
+      isSpeaking = false;
+      if (alwaysOn && recognizer) restartRecognizer();
+    };
+    speechSynthesis.speak(utter);
+  }, 150);
 }
 
 document.getElementById("test-voice-btn").addEventListener("click", () => {
@@ -241,11 +246,16 @@ if (SpeechRecognitionImpl) {
     }
   };
 
+let restartScheduled = false;
 function restartRecognizer(attempt = 0) {
   // Reiniciar el reconocimiento demasiado rápido tras el anterior falla en silencio en
   // Chrome/Android (InvalidStateError); un pequeño margen lo evita. Reintentamos un par de
-  // veces por si el primer intento también falla.
+  // veces por si el primer intento también falla. El guard evita que dos disparadores
+  // (onend + fin del habla) programen reinicios solapados que se pisan entre sí.
+  if (restartScheduled) return;
+  restartScheduled = true;
   setTimeout(() => {
+    restartScheduled = false;
     if (!alwaysOn || isSpeaking) return;
     try {
       recognizer.start();
