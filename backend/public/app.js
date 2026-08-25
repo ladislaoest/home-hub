@@ -79,12 +79,13 @@ function speakText(text) {
 }
 
 document.getElementById("test-voice-btn").addEventListener("click", () => {
+  const status = document.getElementById("voice-test-status");
   if (!("speechSynthesis" in window)) {
-    micStatus.textContent = "Este navegador no tiene síntesis de voz (speechSynthesis no existe).";
+    status.textContent = "Este navegador no tiene síntesis de voz (speechSynthesis no existe).";
     return;
   }
   const voices = speechSynthesis.getVoices();
-  micStatus.textContent = `Voces disponibles: ${voices.length}${esVoice ? " · usando " + esVoice.name : " · sin voz es-ES, usando la del sistema"}`;
+  status.textContent = `Voces disponibles: ${voices.length}${esVoice ? " · usando " + esVoice.name : " · sin voz es-ES, usando la del sistema"}`;
   speakText("Hola, esto es una prueba de voz de Home Hub");
 });
 
