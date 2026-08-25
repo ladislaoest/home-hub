@@ -46,8 +46,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Comprueba el estado real tras un comando, en vez de asumir éxito solo porque SmartThings devolvió 200. */
 async function verifyAttribute(externalId: string, capability: string, attribute: string, expected: string): Promise<boolean> {
+  // Corto a propósito (3x800ms = 2.4s máx): Alexa solo espera ~8s en total antes de rendirse,
+  // y el resto del viaje (red, SmartThings, Groq) ya se come parte de ese margen.
   for (let i = 0; i < 3; i++) {
-    await sleep(1500);
+    await sleep(800);
     const resp = await fetch(`${API_BASE}/devices/${externalId}/components/main/capabilities/${capability}/status`, {
       headers: authHeaders(),
     });
