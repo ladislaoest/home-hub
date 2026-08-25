@@ -94,7 +94,7 @@ function showApp() {
   appScreen.classList.remove("hidden");
   loadDevices();
   loadRoutines();
-  checkAutoActivateAtHome();
+  if (recognizer) setAlwaysOn(true); // escucha activa desde que abres la app, sin tocar nada
 }
 
 function showLogin() {
