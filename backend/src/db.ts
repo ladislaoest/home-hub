@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS routines (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  fact TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS logs (
   id TEXT PRIMARY KEY,
   source TEXT NOT NULL,         -- voice | routine | manual

@@ -3,6 +3,8 @@ import fetch from "node-fetch";
 import { listStoredDevices } from "./deviceManager";
 import { listRoutines, runActions, runRoutine, RoutineAction } from "./routineEngine";
 import { playOnEmby } from "./embyControl";
+import { listMemories, addMemory } from "./memory";
+import { ActionResult } from "../adapters/types";
 
 let client: Anthropic | null = null;
 function getClient() {
@@ -82,6 +84,23 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "remember",
+    description:
+      "Guarda un dato duradero sobre el usuario para futuras conversaciones: su nombre, gustos, rutinas de vida, o " +
+      "cualquier cosa que te cuente y que un compañero de verdad recordaría. Llámala EN EL MISMO turno en que respondes " +
+      "con otra herramienta (chat, execute_actions, etc.), no en vez de ella. Solo para datos duraderos, no para cada frase suelta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fact: {
+          type: "string",
+          description: "el dato a recordar, breve y en tercera persona, ej: 'Se llama Ladislao', 'Le gusta el rock progresivo'",
+        },
+      },
+      required: ["fact"],
+    },
+  },
 ];
 
 const SYSTEM_PROMPT = `Eres Jarvis, el asistente de una casa domótica personalizada (HomeHub). No eres un simple
@@ -89,7 +108,7 @@ ejecutor de comandos: eres un compañero con criterio propio. Piensas antes de r
 de lo que te dicen (no solo palabras clave sueltas) y tienes un tono cercano, eficiente y con un puntito de
 ingenio — nunca seco, nunca un robot que solo dice "Hecho".
 
-El usuario te habla en español, de forma natural y coloquial. Tienes cinco herramientas:
+El usuario te habla en español, de forma natural y coloquial. Tienes seis herramientas:
 - execute_actions: para controlar uno o varios dispositivos (TV, luces, etc.) directamente, incluyendo abrir
   una app sin más (launch_app).
 - play_content: cuando piden ver/reproducir algo CONCRETO por título en Emby (una peli, serie o episodio).
@@ -99,9 +118,15 @@ El usuario te habla en español, de forma natural y coloquial. Tienes cinco herr
 - chat: cuando no te está pidiendo controlar nada — te saluda, te pregunta algo, opina, bromea, o simplemente
   habla contigo. Respóndele como lo haría un compañero de verdad: con naturalidad, en 1-3 frases, sin sonar
   a manual de instrucciones.
+- remember: además de la anterior (en el mismo turno, no en su lugar), cuando el usuario comparta algo digno
+  de recordar en el futuro: su nombre, un gusto, una rutina, un detalle personal. No hace falta que te lo pida.
+
+Tienes memoria real entre conversaciones (ver "Lo que recuerdas del usuario" más abajo). Úsala con naturalidad:
+si sabes su nombre, puedes usarlo de vez en cuando (sin abusar); si sabes sus gustos, ténlos en cuenta cuando
+venga a cuento. No repitas mecánicamente lo que sabes de él solo por demostrarlo.
 
 Reglas:
-- Usa SIEMPRE una de las cinco herramientas. Nunca respondas solo texto plano.
+- Usa SIEMPRE una de las seis herramientas. Nunca respondas solo texto plano.
 - Nunca inventes un deviceId o routineId que no esté en las listas proporcionadas.
 - Si la petición es ambigua pero solo hay una opción razonable dado el contexto (p.ej. solo hay una tele),
   actúa directamente en vez de preguntar.
@@ -159,11 +184,24 @@ const GROQ_TOOLS = [
       parameters: TOOLS[4].input_schema,
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description: TOOLS[5].description,
+      parameters: TOOLS[5].input_schema,
+    },
+  },
 ];
 
 export interface NluResult {
   kind: "actions" | "routine" | "clarify" | "chat" | "content" | "error";
   message: string;
+}
+
+function memoriesDigest(): string {
+  const facts = listMemories().map((m) => m.fact);
+  return facts.length ? facts.map((f) => `- ${f}`).join("\n") : "(nada todavía — es la primera vez o no te ha contado nada memorable)";
 }
 
 function buildUserContent(text: string): string {
@@ -180,7 +218,71 @@ function buildUserContent(text: string): string {
     routines,
     null,
     2
-  )}\n\nPetición del usuario: "${text}"`;
+  )}\n\nLo que recuerdas del usuario:\n${memoriesDigest()}\n\nPetición del usuario: "${text}"`;
+}
+
+const NARRATE_SYSTEM_PROMPT = `Eres Jarvis, el asistente de una casa domótica personalizada (HomeHub) — un compañero con
+personalidad propia, no un robot que anuncia "Hecho.". Te acaban de pasar el resultado técnico de algo que
+ya se ejecutó (un dispositivo, una rutina, una búsqueda de contenido). Cuéntaselo al usuario en español, en
+1-2 frases, breve y natural, con un puntito de ingenio cuando encaje. Si algo falló, dilo con naturalidad y
+sin tecnicismos ni disculpas exageradas. Usa lo que recuerdas del usuario cuando venga a cuento, sin forzarlo.
+Responde solo con el texto que le dirías, nada de JSON ni explicaciones de tu razonamiento.`;
+
+/** Genera texto libre (sin tools) con el mismo proveedor/prioridad que interpretCommand. Devuelve null si falla. */
+async function narrate(prompt: string): Promise<string | null> {
+  try {
+    if (process.env.GROQ_API_KEY) {
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          max_tokens: 200,
+          messages: [
+            { role: "system", content: NARRATE_SYSTEM_PROMPT },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
+      if (!resp.ok) return null;
+      const data: any = await resp.json();
+      const content = data.choices?.[0]?.message?.content;
+      return content ? String(content).trim() : null;
+    }
+
+    const anthropic = getClient();
+    if (!anthropic) return null;
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 200,
+      system: NARRATE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const block = response.content.find((b) => b.type === "text") as Anthropic.TextBlock | undefined;
+    return block?.text?.trim() || null;
+  } catch {
+    return null; // el resultado real ya pasó; si esto falla, caemos al mensaje de respaldo
+  }
+}
+
+function fallbackOutcomeMessage(results: ActionResult[]): string {
+  if (results.length === 1) return results[0].message;
+  const ok = results.every((r) => r.ok);
+  return ok ? "Hecho." : "He intentado hacerlo pero algo ha fallado con alguno de los dispositivos.";
+}
+
+/** Pide al modelo que cuente el resultado de una acción ya ejecutada con su personalidad, en vez de un texto fijo. */
+async function narrateOutcome(text: string, results: ActionResult[]): Promise<string> {
+  const prompt = `El usuario pidió: "${text}"\n\nResultado técnico de ejecutarlo:\n${JSON.stringify(
+    results,
+    null,
+    2
+  )}\n\nLo que recuerdas del usuario:\n${memoriesDigest()}`;
+  const narrated = await narrate(prompt);
+  return narrated || fallbackOutcomeMessage(results);
 }
 
 /** Ejecuta la acción decidida por el modelo (mismo formato de herramienta en ambos proveedores) */
@@ -195,31 +297,39 @@ async function handleToolCall(name: string, input: any, text: string): Promise<N
 
   if (name === "play_content") {
     const result = await playOnEmby(input.query);
-    return { kind: "content", message: result.message };
+    const message = await narrateOutcome(text, [result]);
+    return { kind: "content", message };
   }
 
   if (name === "run_routine") {
     const result = await runRoutine(input.routineId, "voice");
-    return {
-      kind: "routine",
-      message: result.ok ? "Hecho, he ejecutado la rutina." : "He intentado ejecutar la rutina pero algo ha fallado.",
-    };
+    const results = "results" in result ? result.results : [{ ok: result.ok, message: result.message }];
+    const message = await narrateOutcome(text, results);
+    return { kind: "routine", message };
   }
 
   if (name === "execute_actions") {
     const result = await runActions(input.actions as RoutineAction[], "voice", text);
-    // Con una sola acción, mostramos el mensaje real del adaptador (puede matizar si no se pudo confirmar
-    // del todo) en vez de un "Hecho." genérico que tape esa información.
-    const message =
-      result.results.length === 1
-        ? result.results[0].message
-        : result.ok
-        ? "Hecho."
-        : "He intentado hacerlo pero algo ha fallado con alguno de los dispositivos.";
+    const message = await narrateOutcome(text, result.results);
     return { kind: "actions", message };
   }
 
   return { kind: "error", message: "No supe qué hacer con esa petición." };
+}
+
+interface GenericToolCall {
+  name: string;
+  input: any;
+}
+
+/** Guarda como memoria cualquier llamada a "remember" y devuelve la primera llamada "real" restante. */
+function splitRememberCalls(calls: GenericToolCall[]): GenericToolCall | undefined {
+  for (const call of calls) {
+    if (call.name === "remember" && typeof call.input?.fact === "string") {
+      addMemory(call.input.fact);
+    }
+  }
+  return calls.find((c) => c.name !== "remember");
 }
 
 async function interpretWithClaude(text: string): Promise<NluResult> {
@@ -233,11 +343,12 @@ async function interpretWithClaude(text: string): Promise<NluResult> {
     messages: [{ role: "user", content: buildUserContent(text) }],
   });
 
-  const toolUse = response.content.find((b) => b.type === "tool_use") as Anthropic.ToolUseBlock | undefined;
-  if (!toolUse) {
+  const toolUses = response.content.filter((b) => b.type === "tool_use") as Anthropic.ToolUseBlock[];
+  const primary = splitRememberCalls(toolUses.map((t) => ({ name: t.name, input: t.input })));
+  if (!primary) {
     return { kind: "error", message: "No entendí bien la petición, ¿puedes repetirla?" };
   }
-  return handleToolCall(toolUse.name, toolUse.input, text);
+  return handleToolCall(primary.name, primary.input, text);
 }
 
 async function interpretWithGroq(text: string): Promise<NluResult> {
@@ -265,12 +376,16 @@ async function interpretWithGroq(text: string): Promise<NluResult> {
   }
 
   const data: any = await resp.json();
-  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall) {
+  const toolCalls = data.choices?.[0]?.message?.tool_calls || [];
+  const parsed: GenericToolCall[] = toolCalls.map((tc: any) => ({
+    name: tc.function.name,
+    input: JSON.parse(tc.function.arguments || "{}"),
+  }));
+  const primary = splitRememberCalls(parsed);
+  if (!primary) {
     return { kind: "error", message: "No entendí bien la petición, ¿puedes repetirla?" };
   }
-  const input = JSON.parse(toolCall.function.arguments || "{}");
-  return handleToolCall(toolCall.function.name, input, text);
+  return handleToolCall(primary.name, primary.input, text);
 }
 
 export async function interpretCommand(text: string): Promise<NluResult> {
