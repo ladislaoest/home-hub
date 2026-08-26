@@ -53,6 +53,24 @@ if ("speechSynthesis" in window) {
 
 let isSpeaking = false;
 
+// En iOS Safari (y algunos Android estrictos) speechSynthesis.speak() sólo funciona si la
+// primera llamada ocurre de forma síncrona dentro de un gesto real del usuario (un toque).
+// Como la voz se dispara desde el reconocimiento de voz o tras un fetch (async), nunca ocurre
+// dentro de ese gesto y el navegador la descarta en silencio. Por eso "desbloqueamos" la síntesis
+// con una llamada muda en el primer toque de la pantalla; a partir de ahí ya funciona en async.
+let speechUnlocked = false;
+function unlockSpeechSynthesis() {
+  if (speechUnlocked || !("speechSynthesis" in window)) return;
+  speechUnlocked = true;
+  try {
+    const unlockUtter = new SpeechSynthesisUtterance(" ");
+    unlockUtter.volume = 0;
+    speechSynthesis.speak(unlockUtter);
+  } catch (e) {}
+}
+document.addEventListener("touchend", unlockSpeechSynthesis, { once: true, passive: true });
+document.addEventListener("click", unlockSpeechSynthesis, { once: true });
+
 function speakText(text) {
   if (!("speechSynthesis" in window) || !text) return;
   speechSynthesis.cancel();
