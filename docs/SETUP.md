@@ -19,8 +19,11 @@ La mayoría de TVs Samsung modernas (2018+) se pueden añadir a la app **SmartTh
 
 1. Abre la app SmartThings en tu móvil y asegúrate de que tu TV aparece como un dispositivo.
 2. Ve a https://account.smartthings.com/tokens con la misma cuenta y crea un **Personal Access
-   Token (PAT)**. Marca al menos los permisos `Devices` (leer y controlar).
-3. Copia el token → `SMARTTHINGS_TOKEN` en tu `.env`.
+   Token (PAT)**. Marca al menos los permisos `Devices` (leer y controlar). En el campo de
+   expiración, elige el plazo más largo disponible (no la opción corta de 24h) — si no, el token
+   caduca cada día y hay que regenerarlo constantemente.
+3. Copia el token → `SMARTTHINGS_TOKEN` en tu `.env` (y en la variable de entorno de Render si está
+   desplegado ahí).
 
 ### Bombillas Tuya / Smart Life (o genéricas compatibles)
 
