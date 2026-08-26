@@ -45,11 +45,20 @@ function resolveAppId(raw: string | undefined): string | undefined {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Comprueba el estado real tras un comando, en vez de asumir éxito solo porque SmartThings devolvió 200. */
-async function verifyAttribute(externalId: string, capability: string, attribute: string, expected: string): Promise<boolean> {
-  // Corto a propósito (3x800ms = 2.4s máx): Alexa solo espera ~8s en total antes de rendirse,
-  // y el resto del viaje (red, SmartThings, Groq) ya se come parte de ese margen.
-  for (let i = 0; i < 3; i++) {
-    await sleep(800);
+async function verifyAttribute(
+  externalId: string,
+  capability: string,
+  attribute: string,
+  expected: string,
+  attempts = 5,
+  intervalMs = 700
+): Promise<boolean> {
+  // Alexa solo espera ~8s en total antes de rendirse, y el resto del viaje (red, SmartThings, Groq)
+  // ya se come parte de ese margen, así que no podemos alargar esto indefinidamente. Con 5x700ms (3.5s)
+  // damos algo más de margen a bombillas WiFi/Zigbee, que suelen tardar más que la tele en reportar
+  // su nuevo estado a la nube de SmartThings.
+  for (let i = 0; i < attempts; i++) {
+    await sleep(intervalMs);
     const resp = await fetch(`${API_BASE}/devices/${externalId}/components/main/capabilities/${capability}/status`, {
       headers: authHeaders(),
     });
@@ -165,7 +174,7 @@ export const smartThingsAdapter: ProviderAdapter = {
       const ok = await verifyAttribute(externalId, "switch", "switch", action === "turn_on" ? "on" : "off");
       return ok
         ? { ok: true, message: "Hecho." }
-        : { ok: false, message: "Le mandé el comando a la tele pero no he podido confirmar que cambiara de estado — puede estar desconectada." };
+        : { ok: false, message: "Le mandé el comando pero no he podido confirmar que el dispositivo cambiara de estado — puede estar desconectado." };
     }
     if (action === "mute" || action === "unmute") {
       const ok = await verifyAttribute(externalId, "audioMute", "mute", action === "mute" ? "muted" : "unmuted");
