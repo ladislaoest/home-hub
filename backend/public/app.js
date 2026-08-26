@@ -60,16 +60,21 @@ let isSpeaking = false;
 // con una llamada muda en el primer toque de la pantalla; a partir de ahí ya funciona en async.
 let speechUnlocked = false;
 function unlockSpeechSynthesis() {
+  // No marcamos "desbloqueado" hasta confirmar con onstart que realmente sonó; si el primer
+  // intento falla en silencio (p.ej. porque las voces aún no habían cargado), lo reintentamos
+  // en el siguiente toque en vez de darlo por bueno para siempre.
   if (speechUnlocked || !("speechSynthesis" in window)) return;
-  speechUnlocked = true;
   try {
     const unlockUtter = new SpeechSynthesisUtterance(" ");
     unlockUtter.volume = 0;
+    unlockUtter.onstart = () => {
+      speechUnlocked = true;
+    };
     speechSynthesis.speak(unlockUtter);
   } catch (e) {}
 }
-document.addEventListener("touchend", unlockSpeechSynthesis, { once: true, passive: true });
-document.addEventListener("click", unlockSpeechSynthesis, { once: true });
+document.addEventListener("touchend", unlockSpeechSynthesis, { passive: true });
+document.addEventListener("click", unlockSpeechSynthesis);
 
 function speakText(text) {
   if (!("speechSynthesis" in window) || !text) return;
@@ -89,10 +94,26 @@ function speakText(text) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "es-ES";
     if (esVoice) utter.voice = esVoice;
-    utter.onend = utter.onerror = () => {
+
+    let settled = false;
+    const finishSpeaking = () => {
+      if (settled) return;
+      settled = true;
       isSpeaking = false;
       if (alwaysOn && recognizer) restartRecognizer();
     };
+    utter.onstart = () => {
+      speechUnlocked = true;
+    };
+    utter.onend = finishSpeaking;
+    utter.onerror = (e) => {
+      micStatus.textContent = "Voz: error (" + (e.error || "desconocido") + ")";
+      finishSpeaking();
+    };
+    // Salvaguarda: en algunos móviles el navegador nunca llama a onend ni onerror cuando
+    // descarta el habla en silencio. Sin esto, isSpeaking se queda atascado en true para
+    // siempre y el micrófono no se reactiva solo (hay que tocar la pantalla a mano).
+    setTimeout(finishSpeaking, Math.max(4000, text.length * 90));
     speechSynthesis.speak(utter);
   }, 150);
 }
