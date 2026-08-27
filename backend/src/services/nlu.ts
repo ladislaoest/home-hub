@@ -133,14 +133,17 @@ Reglas:
 - Si varios dispositivos comparten el mismo nombre y/o habitación (p.ej. dos "Luz salón" en la habitación
   "Salón"), trátalos como una sola unidad: cuando pidan encender/apagar/ajustar "la luz" o "las luces" de esa
   zona, incluye TODOS los que coincidan en execute_actions (una acción por cada deviceId), no elijas solo uno.
-- Distingue una ORDEN nueva ("enciende la luz") de un COMENTARIO o QUEJA sobre algo que ya pasó ("te dije que
-  encendieras la luz y encendiste la tele", "eso no era lo que pedí", "te equivocaste"). Para lo segundo usa
-  chat: discúlpate brevemente y pregunta qué quiere que hagas ahora, o si está claro qué quería decir en
-  realidad, corrígelo con execute_actions. Nunca uses execute_actions solo porque la frase menciona un
-  dispositivo — tiene que ser una petición real de acción.
-  Ejemplo: "te dije que encendieras las luces y encendiste la tele" → NO es una orden de encender nada; es una
-  queja. Respuesta correcta con chat: algo como "perdona, la lié — ¿quieres que encienda la luz y apague la
-  tele ahora?". Respuesta incorrecta: usar execute_actions sin más.`;
+- Distingue una ORDEN nueva de un COMENTARIO o QUEJA sobre algo que YA pasó. Una orden es un imperativo en
+  presente sobre lo que quiere AHORA ("apaga las luces", "pon la tele") — SIEMPRE es execute_actions, aunque
+  suene parecida a una queja anterior de esta lista de ejemplos o a algo que ya se pidió antes. Una queja se
+  reconoce SOLO por marcas explícitas de pasado o corrección ("te dije que...", "eso no era lo que pedí", "te
+  equivocaste", "no era eso") — si no hay ninguna de esas marcas, no es una queja. Para la queja usa chat:
+  discúlpate brevemente y pregunta qué quiere que hagas ahora, o si está claro qué quería decir, corrígelo con
+  execute_actions. Nunca ignores una orden directa solo porque se parezca superficialmente a un ejemplo de
+  este prompt.
+  Ejemplo de queja real: "oye, te dije que encendieras la luz del pasillo y has encendido la del baño" → SÍ es
+  una queja (tiene "te dije que" + pasado). Ejemplo de orden real: "apaga las luces" → NO es una queja aunque
+  mencione dispositivos, es una orden directa: usa execute_actions sobre todas las luces correspondientes.`;
 
 // Mismas herramientas que TOOLS pero en formato OpenAI (el que usa la API de Groq)
 const GROQ_TOOLS = [
@@ -274,9 +277,13 @@ function fallbackOutcomeMessage(results: ActionResult[]): string {
   return ok ? "Hecho." : "He intentado hacerlo pero algo ha fallado con alguno de los dispositivos.";
 }
 
-/** Pide al modelo que cuente el resultado de una acción ya ejecutada con su personalidad, en vez de un texto fijo. */
-async function narrateOutcome(text: string, results: ActionResult[]): Promise<string> {
-  const prompt = `El usuario pidió: "${text}"\n\nResultado técnico de ejecutarlo:\n${JSON.stringify(
+/**
+ * Pide al modelo que cuente el resultado de una acción ya ejecutada con su personalidad, en vez de un texto fijo.
+ * `context` describe QUÉ se ejecutó realmente (dispositivos/acciones concretas) para que el modelo no tenga que
+ * adivinarlo ni pueda confundirlo con la petición de otro comando.
+ */
+async function narrateOutcome(text: string, context: string, results: ActionResult[]): Promise<string> {
+  const prompt = `El usuario pidió: "${text}"\n\nEsto es exactamente lo que se ejecutó: ${context}\n\nResultado técnico:\n${JSON.stringify(
     results,
     null,
     2
@@ -297,20 +304,26 @@ async function handleToolCall(name: string, input: any, text: string): Promise<N
 
   if (name === "play_content") {
     const result = await playOnEmby(input.query);
-    const message = await narrateOutcome(text, [result]);
+    const message = await narrateOutcome(text, `Reproducir "${input.query}"`, [result]);
     return { kind: "content", message };
   }
 
   if (name === "run_routine") {
+    const routineName = listRoutines().find((r) => r.id === input.routineId)?.name || input.routineId;
     const result = await runRoutine(input.routineId, "voice");
     const results = "results" in result ? result.results : [{ ok: result.ok, message: result.message }];
-    const message = await narrateOutcome(text, results);
+    const message = await narrateOutcome(text, `Ejecutar la rutina "${routineName}"`, results);
     return { kind: "routine", message };
   }
 
   if (name === "execute_actions") {
-    const result = await runActions(input.actions as RoutineAction[], "voice", text);
-    const message = await narrateOutcome(text, result.results);
+    const deviceNames = new Map(listStoredDevices().map((d) => [d.id, d.name]));
+    const actions = (input.actions as RoutineAction[]) || [];
+    const context = actions
+      .map((a) => `${a.action} sobre "${(a.deviceId && deviceNames.get(a.deviceId)) || a.deviceId}"`)
+      .join(", ");
+    const result = await runActions(actions, "voice", text);
+    const message = await narrateOutcome(text, context, result.results);
     return { kind: "actions", message };
   }
 
